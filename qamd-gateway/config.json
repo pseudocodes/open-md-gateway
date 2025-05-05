@@ -1,0 +1,48 @@
+{
+    "brokers": {
+        "simnow724": {
+            "name": "simnow724",
+            "front_addr": "tcp://180.168.146.187:10131",
+            "dynlib_path": "./thostmduserapi_se.so",
+            "flow_path": "md_",
+            "user_id": "your_simnow_user_id!",
+            "password": "your_simnow_password!",
+            "broker_id": "9999",
+            "source_type": "ctp"
+        },
+        "simnow": {
+            "name": "simnow",
+            "front_addr": "tcp://180.168.146.187:10211",
+            "dynlib_path": "./thostmduserapi_se.so",
+            "flow_path": "md_",
+            "user_id": "your_simnow_user_id!",
+            "password": "your_simnow_password!",
+            "broker_id": "9999",
+            "source_type": "ctp"
+        }
+    },
+    "default_broker": "simnow724",
+    "websocket": {
+        "host": "0.0.0.0",
+        "port": 8011,
+        "path": "/ws/market"
+    },
+    "rest_api": {
+        "host": "0.0.0.0",
+        "port": 8012,
+        "cors": {
+            "allow_all": true,
+            "allowed_origins": [],
+            "allow_credentials": true
+        }
+    },
+    "subscription": {
+        "default_instruments": [
+            "au2512",
+            "rb2512",
+            "IF2506"
+        ],
+        "auto_subscribe_patterns": []
+    },
+    "log_level": "info"
+}
