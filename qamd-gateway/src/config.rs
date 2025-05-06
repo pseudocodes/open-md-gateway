@@ -148,6 +148,12 @@ impl Config {
         })
     }
 
+    /// Get broker configuration by name
+    pub fn get_brokers(&self) -> GatewayResult<Vec<BrokerConfig>> {
+        let brokers: Vec<BrokerConfig> = self.brokers.values().cloned().collect();
+        Ok(brokers)
+    }
+
     /// Load configuration from environment or file
     pub fn load() -> GatewayResult<Self> {
         // Try to read from environment variable first

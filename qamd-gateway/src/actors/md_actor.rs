@@ -344,7 +344,7 @@ impl MarketDataActor {
             // 执行订阅
             let instruments_vec: Vec<String> = instruments.to_vec();
             let result = md_api.subscribe_market_data(&instruments_vec);
-
+            debug!("sub {:?} ret: {}", instruments_vec, result);
             match result {
                 0 => {
                     std::thread::sleep(std::time::Duration::from_secs(1));

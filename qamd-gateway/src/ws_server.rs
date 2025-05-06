@@ -259,6 +259,7 @@ impl WsSession {
         for instrument in &instruments {
             self.subscriptions.insert(instrument.clone());
         }
+        debug!("instruments input {:?}", instruments);
 
         // 更新分发器的订阅
         self.md_distributor.do_send(UpdateSubscription {
@@ -346,6 +347,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsSession {
                     Ok(WsClientMessage::TvSubscribeQuote { aid, ins_list })
                         if aid == "subscribe_quote" =>
                     {
+                        // debug!("ins_list: {}", &ins_list);
                         // TradingView格式的订阅
                         let instruments = self.parse_tv_instruments(&ins_list);
                         self.handle_subscribe(ctx, instruments);
@@ -478,6 +480,7 @@ impl Handler<MarketDataUpdateMessage> for WsSession {
 
                             // 将响应发送给客户端
                             if let Ok(json_str) = serde_json::to_string(&tv_market_data) {
+                                debug!("out json_str: {}", json_str);
                                 ctx.text(json_str);
                                 debug!(
                                     "Sent market data update for {} to client {}",

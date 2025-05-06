@@ -340,7 +340,6 @@ impl MarketDataDistributor {
 
         // 简化：由于构建时只会启用一个feature，直接返回对应类型的第一个actor即可
 
-        #[cfg(feature = "ctp")]
         if let Some((_, actor)) = self.ctp_actors.iter().next() {
             return Some((actor.clone(), MarketDataSource::CTP));
         }
@@ -690,7 +689,7 @@ impl Handler<MarketDataUpdate> for MarketDataDistributor {
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect();
         }
-
+        debug!("MD_snapshort: {:?}", data);
         // 更新缓存
         self.market_data_cache
             .insert(instrument.clone(), data.clone());

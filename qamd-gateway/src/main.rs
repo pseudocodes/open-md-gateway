@@ -80,7 +80,7 @@ async fn main() -> GatewayResult<()> {
             .app_data(web::Data::new(md_distributor.clone()))
             .service(
                 // web::resource(&config.websocket.path).route(web::get().to(ws_server::ws_handler)),
-                web::resource("/api/market/{source}").route(web::get().to(ws_server::ws_handler)),
+                web::resource("/ws/market/{source}").route(web::get().to(ws_server::ws_handler)),
             )
             .configure(configure_routes)
     })

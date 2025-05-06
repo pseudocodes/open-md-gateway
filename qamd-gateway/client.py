@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# encoding: utf-8
 import websockets
 import asyncio
 import json
@@ -5,50 +7,77 @@ import logging
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Callable
 import signal
+import os
 import argparse
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class QAMDClient:
-    """QAUTLRA-RS行情客户端, 支持CTP、QQ和Sina三种行情源"""
+    """QAUTLRA-RS行情客户端，支持CTP、QQ和Sina三种行情源"""
     
     def __init__(self, 
-                 ws_url: str = "ws://localhost:8012/ws/market/ctp", 
-                 ):
+                 ctp_url: str = "ws://localhost:8012/ws/market/ctp", 
+                 qq_url: str = "ws://localhost:8012/ws/market/qq",
+                 sina_url: str = "ws://localhost:8012/ws/market/sina"):
         """
         初始化行情客户端
         
         Args:
-            ws_url: CTP行情WebSocket URL
+            ctp_url: CTP行情WebSocket URL
+            qq_url: QQ行情WebSocket URL
+            sina_url: 新浪行情WebSocket URL
         """
-        self.ws_url = ws_url
+        self.ctp_url = ctp_url
+        self.qq_url = qq_url
+        self.sina_url = sina_url
         
-        self.gw_websocket: Optional[websockets.WebSocketClientProtocol] = None
+        self.ctp_websocket: Optional[websockets.WebSocketClientProtocol] = None
+        self.qq_websocket: Optional[websockets.WebSocketClientProtocol] = None
+        self.sina_websocket: Optional[websockets.WebSocketClientProtocol] = None
         
         self.running = True
-        self.subscribed_instruments: set = set()
+        self.subscribed_ctp_instruments: set = set()
+        self.subscribed_qq_instruments: set = set()
+        self.subscribed_sina_instruments: set = set()
         
         self.callbacks: Dict[str, List[Callable]] = {
             'ctp_market_data': [],
+            'qq_market_data': [],
+            'sina_market_data': [],
             'system': [],
             'error': [],
             'subscriptions': [],
         }
         
         # 设置信号处理器（用于优雅退出）
-        signal.signal(signal.SIGINT, self._signal_handler)
+        signal.signal(signal.SIGINT, self._signal_handler2)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
     def _signal_handler(self, signum, frame):
         """处理系统信号，实现优雅关闭"""
         logger.info(f"收到信号 {signum}，开始关闭...")
         self.running = False
+        
+    def _signal_handler2(self, signum, frame):
+        """处理系统信号，实现优雅关闭"""
+        logger.info(f"收到信号 INT: {signum}，开始关闭...")
+        self.running = False
+        os.exit(0)
+
 
     # 注册回调函数
-    def on_rtn_market_data(self, callback: Callable[[Dict[str, Any]], None]):
+    def on_ctp_market_data(self, callback: Callable[[Dict[str, Any]], None]):
         """注册CTP行情数据回调"""
-        self.callbacks['rtn_market_data'].append(callback)
+        self.callbacks['ctp_market_data'].append(callback)
+
+    def on_qq_market_data(self, callback: Callable[[Dict[str, Any]], None]):
+        """注册QQ行情数据回调"""
+        self.callbacks['qq_market_data'].append(callback)
+        
+    def on_sina_market_data(self, callback: Callable[[Dict[str, Any]], None]):
+        """注册新浪行情数据回调"""
+        self.callbacks['sina_market_data'].append(callback)
 
     def on_system_message(self, callback: Callable[[str], None]):
         """注册系统消息回调"""
@@ -63,17 +92,36 @@ class QAMDClient:
         self.callbacks['subscriptions'].append(callback)
 
     # 连接函数
-    async def connect_gw(self):
-        """连接到 gateway 行情服务器"""
+    async def connect_ctp(self):
+        """连接到CTP行情服务器"""
         try:
-            self.gw_websocket = await websockets.connect(self.ws_url)
+            self.ctp_websocket = await websockets.connect(self.ctp_url)
             logger.info(f"已连接到CTP行情服务器: {self.ctp_url}")
             return True
         except Exception as e:
             logger.error(f"连接CTP行情服务器失败: {e}")
             return False
 
-    
+    async def connect_qq(self):
+        """连接到QQ行情服务器"""
+        try:
+            self.qq_websocket = await websockets.connect(self.qq_url)
+            logger.info(f"已连接到QQ行情服务器: {self.qq_url}")
+            return True
+        except Exception as e:
+            logger.error(f"连接QQ行情服务器失败: {e}")
+            return False
+            
+    async def connect_sina(self):
+        """连接到新浪行情服务器"""
+        try:
+            self.sina_websocket = await websockets.connect(self.sina_url)
+            logger.info(f"已连接到新浪行情服务器: {self.sina_url}")
+            return True
+        except Exception as e:
+            logger.error(f"连接新浪行情服务器失败: {e}")
+            return False
+
     async def disconnect(self):
         """断开所有WebSocket连接"""
         if self.ctp_websocket:
@@ -92,15 +140,15 @@ class QAMDClient:
             logger.info("已断开新浪行情服务器连接")
 
     # 订阅函数
-    async def subscribe(self, instruments: List[str]):
+    async def subscribe_ctp(self, instruments: List[str]):
         """
         订阅CTP市场数据
         
         Args:
             instruments: 合约列表，格式如 ["SHFE.au2512", "CFFEX.IF2506"]
         """
-        if not self.gw_websocket:
-            raise ConnectionError("未连接到 Gateway 行情服务器")
+        if not self.ctp_websocket:
+            raise ConnectionError("未连接到CTP行情服务器")
 
         # 使用TradingView格式创建订阅消息
         message = {
@@ -109,22 +157,62 @@ class QAMDClient:
         }
         
         await self.ctp_websocket.send(json.dumps(message))
-        self.subscribed_instruments.update(instruments)
-        logger.info(f"已订阅合约: {instruments}")
+        self.subscribed_ctp_instruments.update(instruments)
+        logger.info(f"已订阅CTP合约: {instruments}")
+
+    async def subscribe_qq(self, instruments: List[str]):
+        """
+        订阅QQ市场数据
+        
+        Args:
+            instruments: 合约/股票代码列表，格式如 ["000001", "600000"]，支持灵活的代码格式
+        """
+        if not self.qq_websocket:
+            raise ConnectionError("未连接到QQ行情服务器")
+
+        # 使用TradingView格式创建订阅消息
+        message = {
+            "aid": "subscribe_quote",
+            "ins_list": ",".join(instruments)
+        }
+        
+        await self.qq_websocket.send(json.dumps(message))
+        self.subscribed_qq_instruments.update(instruments)
+        logger.info(f"已订阅QQ合约: {instruments}")
+        
+    async def subscribe_sina(self, instruments: List[str]):
+        """
+        订阅新浪市场数据
+        
+        Args:
+            instruments: 合约/股票代码列表，格式如 ["600000", "AAPL"]，支持灵活的代码格式
+        """
+        if not self.sina_websocket:
+            raise ConnectionError("未连接到新浪行情服务器")
+
+        # 使用TradingView格式创建订阅消息
+        message = {
+            "aid": "subscribe_quote",
+            "ins_list": ",".join(instruments)
+        }
+        
+        await self.sina_websocket.send(json.dumps(message))
+        self.subscribed_sina_instruments.update(instruments)
+        logger.info(f"已订阅新浪合约: {instruments}")
 
     # 取消订阅函数
-    async def unsubscribe(self, instruments: List[str]):
+    async def unsubscribe_ctp(self, instruments: List[str]):
         """
         取消订阅CTP市场数据
         
         Args:
             instruments: 要取消订阅的合约列表
         """
-        if not self.gw_websocket:
-            raise ConnectionError("未连接到 Gateway 行情服务器")
+        if not self.ctp_websocket:
+            raise ConnectionError("未连接到CTP行情服务器")
 
         # 取消订阅时，我们发送除去要取消的合约的订阅列表
-        all_instruments = list(self.subscribed_instruments)
+        all_instruments = list(self.subscribed_ctp_instruments)
         for ins in instruments:
             if ins in all_instruments:
                 all_instruments.remove(ins)
@@ -135,23 +223,95 @@ class QAMDClient:
             "ins_list": ",".join(all_instruments)
         }
         
-        await self.gw_websocket.send(json.dumps(message))
-        self.subscribed_instruments.difference_update(instruments)
+        await self.ctp_websocket.send(json.dumps(message))
+        self.subscribed_ctp_instruments.difference_update(instruments)
         logger.info(f"已取消订阅CTP合约: {instruments}")
-            
+        
+    async def unsubscribe_qq(self, instruments: List[str]):
+        """
+        取消订阅QQ市场数据
+        
+        Args:
+            instruments: 要取消订阅的合约/股票代码列表
+        """
+        if not self.qq_websocket:
+            raise ConnectionError("未连接到QQ行情服务器")
+
+        all_instruments = list(self.subscribed_qq_instruments)
+        for ins in instruments:
+            if ins in all_instruments:
+                all_instruments.remove(ins)
+        
+        message = {
+            "aid": "subscribe_quote",
+            "ins_list": ",".join(all_instruments)
+        }
+        
+        await self.qq_websocket.send(json.dumps(message))
+        self.subscribed_qq_instruments.difference_update(instruments)
+        logger.info(f"已取消订阅QQ合约: {instruments}")
+        
+    async def unsubscribe_sina(self, instruments: List[str]):
+        """
+        取消订阅新浪市场数据
+        
+        Args:
+            instruments: 要取消订阅的合约/股票代码列表
+        """
+        if not self.sina_websocket:
+            raise ConnectionError("未连接到新浪行情服务器")
+
+        all_instruments = list(self.subscribed_sina_instruments)
+        for ins in instruments:
+            if ins in all_instruments:
+                all_instruments.remove(ins)
+        
+        message = {
+            "aid": "subscribe_quote",
+            "ins_list": ",".join(all_instruments)
+        }
+        
+        await self.sina_websocket.send(json.dumps(message))
+        self.subscribed_sina_instruments.difference_update(instruments)
+        logger.info(f"已取消订阅新浪合约: {instruments}")
+        
     # 查询当前订阅状态
-    async def peek_subscriptions(self):
-        """查询当前 Gateway 订阅状态"""
-        if not self.gw_websocket:
-            raise ConnectionError("未连接到 Gateway 行情服务器")
+    async def peek_ctp_subscriptions(self):
+        """查询当前CTP订阅状态"""
+        if not self.ctp_websocket:
+            raise ConnectionError("未连接到CTP行情服务器")
+            
         message = {
             "aid": "peek_message"
         }
         
         await self.ctp_websocket.send(json.dumps(message))
         logger.info("已请求CTP订阅状态")
+        
+    async def peek_qq_subscriptions(self):
+        """查询当前QQ订阅状态"""
+        if not self.qq_websocket:
+            raise ConnectionError("未连接到QQ行情服务器")
             
-    
+        message = {
+            "aid": "peek_message"
+        }
+        
+        await self.qq_websocket.send(json.dumps(message))
+        logger.info("已请求QQ订阅状态")
+        
+    async def peek_sina_subscriptions(self):
+        """查询当前新浪订阅状态"""
+        if not self.sina_websocket:
+            raise ConnectionError("未连接到新浪行情服务器")
+            
+        message = {
+            "aid": "peek_message"
+        }
+        
+        await self.sina_websocket.send(json.dumps(message))
+        logger.info("已请求新浪订阅状态")
+
     # 消息处理函数
     async def _handle_message(self, message: str, source_type: str):
         """
@@ -174,9 +334,7 @@ class QAMDClient:
                     if aid_type == 'rtn_data':
                         # 处理行情数据
                         if 'data' in data:
-                            callback_key = f'rtn_market_data'
-                            # callback_key = f'{source_type}_market_data'
-                            
+                            callback_key = f'{source_type}_market_data'
                             for callback in self.callbacks.get(callback_key, []):
                                 await asyncio.create_task(callback(data['data']))
                     elif aid_type == 'peek_message':
@@ -261,6 +419,7 @@ class QAMDClient:
         
         while self.running:
             try:
+                print(f'here ?? {websocket}')
                 if not websocket:
                     if not await connect_func():
                         await asyncio.sleep(5)  # 连接失败，等待后重试
@@ -280,6 +439,7 @@ class QAMDClient:
                 # 主消息循环
                 async for message in websocket:
                     if not self.running:
+                        print("break ????!")
                         break
                     await self._handle_message(message, source_type)
 
@@ -293,6 +453,7 @@ class QAMDClient:
             except websockets.exceptions.ConnectionClosed:
                 logger.warning(f"{source_type}连接已关闭，尝试重连...")
                 await asyncio.sleep(5)
+                websocket = None 
             except Exception as e:
                 logger.error(f"{source_type}运行循环出错: {e}")
                 await asyncio.sleep(5)
@@ -381,12 +542,12 @@ async def main():
     try:
         # 订阅不同市场的行情数据
         if enable_ctp:
-            await client.subscribe_ctp(["au2512", "IF2506", "rb2512"])
+            await client.subscribe_ctp(["au2506", "IF2506", "rb2512"])
             await client.peek_ctp_subscriptions()
         
         if enable_qq:
             # QQ行情支持灵活的代码格式
-            await client.subscribe_qq([ "SZSE.000001", "HKEX.00700"])
+            await client.subscribe_qq([ "000001", "00700"])
             await client.peek_qq_subscriptions()
             
         if enable_sina:
